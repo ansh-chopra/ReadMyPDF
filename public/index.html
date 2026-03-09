@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReadMyPDF</title>
+    <meta name="description" content="Convert PDF documents to speech using AI. Upload, extract, listen.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔊</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <path d="M9 15l2 2 4-4"/>
+                    </svg>
+                </div>
+                <span class="logo-text">ReadMyPDF</span>
+            </div>
+            <p class="tagline">Drop a PDF. Hear it back.</p>
+        </header>
+
+        <main class="main">
+            <!-- Upload State -->
+            <section id="upload-section" class="section active">
+                <div class="upload-zone" id="drop-zone">
+                    <div class="upload-icon-ring">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                    </div>
+                    <h2 class="upload-title">Drop your PDF</h2>
+                    <p class="upload-subtitle">or tap to choose a file</p>
+                    <p class="upload-limit">PDF up to 20 MB</p>
+                    <input type="file" id="file-input" accept=".pdf,application/pdf" hidden>
+                </div>
+            </section>
+
+            <!-- Processing State -->
+            <section id="processing-section" class="section">
+                <div class="status-container">
+                    <div class="status-pill extracting">
+                        <div class="pill-spinner"></div>
+                        <span>Extracting text</span>
+                    </div>
+                    <p class="status-file" id="file-name-display"></p>
+                </div>
+            </section>
+
+            <!-- Text + Settings State -->
+            <section id="text-section" class="section">
+                <div class="card text-card">
+                    <div class="card-header">
+                        <div class="card-title-group">
+                            <div class="card-icon green">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                            </div>
+                            <h3>Extracted</h3>
+                        </div>
+                        <span class="badge" id="word-count">0 words</span>
+                    </div>
+                    <textarea id="extracted-text" class="text-area" placeholder="Extracted text will appear here..."></textarea>
+                </div>
+
+                <div class="card settings-card">
+                    <div class="card-header">
+                        <div class="card-title-group">
+                            <div class="card-icon purple">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                                </svg>
+                            </div>
+                            <h3>Voice</h3>
+                        </div>
+                    </div>
+
+                    <div class="settings-body">
+                        <div class="setting-group">
+                            <label class="setting-label">Speaker</label>
+                            <div class="voice-grid" id="voice-grid">
+                                <button class="voice-pill active" data-voice="Wise_Woman">Wise Woman</button>
+                                <button class="voice-pill" data-voice="Friendly_Person">Friendly</button>
+                                <button class="voice-pill" data-voice="Deep_Voice_Man">Deep Voice</button>
+                                <button class="voice-pill" data-voice="Calm_Woman">Calm</button>
+                                <button class="voice-pill" data-voice="Casual_Guy">Casual Guy</button>
+                                <button class="voice-pill" data-voice="Lively_Girl">Lively</button>
+                                <button class="voice-pill" data-voice="Patient_Man">Patient</button>
+                                <button class="voice-pill" data-voice="Elegant_Man">Elegant</button>
+                                <button class="voice-pill" data-voice="Sweet_Girl_2">Sweet</button>
+                            </div>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-group flex-1">
+                                <label class="setting-label">Speed</label>
+                                <div class="slider-wrap">
+                                    <input type="range" id="speed-slider" class="slider" min="0.5" max="2" step="0.1" value="1">
+                                    <span class="slider-value" id="speed-value">1.0x</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <label class="setting-label">Emotion</label>
+                            <div class="emotion-grid" id="emotion-grid">
+                                <button class="emotion-pill active" data-emotion="neutral">😐 Neutral</button>
+                                <button class="emotion-pill" data-emotion="happy">😊 Happy</button>
+                                <button class="emotion-pill" data-emotion="sad">😢 Sad</button>
+                                <button class="emotion-pill" data-emotion="angry">😠 Angry</button>
+                                <button class="emotion-pill" data-emotion="surprised">😲 Surprised</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-generate" id="generate-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    Generate Speech
+                </button>
+            </section>
+
+            <!-- Generating State -->
+            <section id="generating-section" class="section">
+                <div class="status-container">
+                    <div class="status-pill generating">
+                        <div class="pill-spinner"></div>
+                        <span>Generating audio</span>
+                    </div>
+                    <p class="status-sub">This may take a moment...</p>
+                </div>
+            </section>
+
+            <!-- Audio Player State -->
+            <section id="audio-section" class="section">
+                <div class="card audio-card">
+                    <div class="card-header">
+                        <div class="card-title-group">
+                            <div class="card-icon blue">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+                                </svg>
+                            </div>
+                            <h3>Ready</h3>
+                        </div>
+                        <span class="badge blue" id="duration-badge">0:00</span>
+                    </div>
+
+                    <div class="player-wrap">
+                        <button class="play-btn" id="play-btn">
+                            <svg id="play-icon" width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                                <polygon points="5 3 19 12 5 21 5 3"/>
+                            </svg>
+                            <svg id="pause-icon" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+                                <rect x="6" y="4" width="4" height="16" rx="1"/>
+                                <rect x="14" y="4" width="4" height="16" rx="1"/>
+                            </svg>
+                        </button>
+                        <div class="progress-track" id="progress-track">
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+                        <span class="time-label" id="time-label">0:00</span>
+                    </div>
+
+                    <audio id="audio-player"></audio>
+                </div>
+
+                <div class="audio-actions">
+                    <a class="btn-download" id="download-btn" download="readmypdf-audio.mp3">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download MP3
+                    </a>
+                    <button class="btn-secondary" id="new-btn">New PDF</button>
+                </div>
+            </section>
+
+            <!-- Error State -->
+            <section id="error-section" class="section">
+                <div class="card error-card">
+                    <div class="card-icon orange">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="12" y1="8" x2="12" y2="12"/>
+                            <line x1="12" y1="16" x2="12.01" y2="16"/>
+                        </svg>
+                    </div>
+                    <h3 id="error-title">Something went wrong</h3>
+                    <p id="error-message">Please try again.</p>
+                    <button class="btn-secondary" id="retry-btn">Try Again</button>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>Powered by Gemini + MiniMax</p>
+        </footer>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
