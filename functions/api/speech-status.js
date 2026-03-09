@@ -14,7 +14,7 @@ export async function onRequestGet(context) {
 
         // Check status
         const statusRes = await fetch(
-            `https://queue.fal.run/fal-ai/minimax/speech-2.8-turbo/requests/${requestId}/status`,
+            `https://queue.fal.run/fal-ai/minimax/requests/${requestId}/status`,
             {
                 headers: { 'Authorization': `Key ${FAL_KEY}` },
             }
@@ -31,7 +31,7 @@ export async function onRequestGet(context) {
         if (status.status === 'COMPLETED') {
             // Fetch the result
             const resultRes = await fetch(
-                `https://queue.fal.run/fal-ai/minimax/speech-2.8-turbo/requests/${requestId}`,
+                `https://queue.fal.run/fal-ai/minimax/requests/${requestId}`,
                 {
                     headers: { 'Authorization': `Key ${FAL_KEY}` },
                 }
