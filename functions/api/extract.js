@@ -20,7 +20,7 @@ export async function onRequestPost(context) {
                     contents: [{
                         parts: [
                             {
-                                text: 'Extract all text from this PDF document. Preserve paragraph structure and line breaks. Return only the raw extracted text — no commentary, no headers, no formatting instructions.',
+                                text: 'Extract the main body text from this PDF document. Preserve paragraph structure and line breaks. Omit any boilerplate that is not part of the core content — this includes copyright notices, "all rights reserved" lines, publisher info, page numbers, repeated headers/footers, disclaimers, and legal fine print. Return only the clean extracted text — no commentary, no formatting instructions.',
                             },
                             {
                                 inlineData: {

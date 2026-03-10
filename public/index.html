@@ -111,6 +111,13 @@
                                     <span class="slider-value" id="speed-value">1.0x</span>
                                 </div>
                             </div>
+                            <div class="setting-group flex-1">
+                                <label class="setting-label">Pitch</label>
+                                <div class="slider-wrap">
+                                    <input type="range" id="pitch-slider" class="slider" min="-12" max="12" step="1" value="0">
+                                    <span class="slider-value" id="pitch-value">0</span>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="setting-group">
@@ -139,9 +146,9 @@
                 <div class="status-container">
                     <div class="status-pill generating">
                         <div class="pill-spinner"></div>
-                        <span>Generating audio</span>
+                        <span id="generating-status-text">Generating audio</span>
                     </div>
-                    <p class="status-sub">This may take a moment...</p>
+                    <p class="status-sub" id="generating-sub">This may take a moment...</p>
                 </div>
             </section>
 

@@ -24,6 +24,8 @@
     const wordCount = $('#word-count');
     const speedSlider = $('#speed-slider');
     const speedValue = $('#speed-value');
+    const pitchSlider = $('#pitch-slider');
+    const pitchValue = $('#pitch-value');
     const generateBtn = $('#generate-btn');
     const audioPlayer = $('#audio-player');
     const playBtn = $('#play-btn');
@@ -36,6 +38,8 @@
     const downloadBtn = $('#download-btn');
     const newBtn = $('#new-btn');
     const retryBtn = $('#retry-btn');
+    const generatingStatusText = $('#generating-status-text');
+    const generatingSub = $('#generating-sub');
 
     // ── Section Management ─────────────────────────────
     function showSection(name) {
@@ -163,6 +167,12 @@
         speedValue.textContent = `${parseFloat(speedSlider.value).toFixed(1)}x`;
     });
 
+    // ── Pitch Slider ───────────────────────────────────
+    pitchSlider.addEventListener('input', () => {
+        const val = parseInt(pitchSlider.value);
+        pitchValue.textContent = val > 0 ? `+${val}` : `${val}`;
+    });
+
     // ── Speech Generation ──────────────────────────────
     generateBtn.addEventListener('click', () => {
         const text = textArea.value.trim();
@@ -170,6 +180,8 @@
             showError('No text', 'Please enter some text to generate speech.');
             return;
         }
+        generatingStatusText.textContent = 'Generating audio';
+        generatingSub.textContent = 'This may take a moment...';
         showSection('generating');
         generateSpeech(text);
     });
@@ -177,8 +189,8 @@
     async function generateSpeech(text) {
         try {
             const speed = parseFloat(speedSlider.value);
+            const pitch = parseInt(pitchSlider.value);
 
-            // Submit to queue
             const res = await fetch('/api/speech', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -186,6 +198,7 @@
                     text,
                     voice_id: selectedVoice,
                     speed,
+                    pitch,
                     emotion: selectedEmotion,
                 }),
             });
@@ -197,15 +210,21 @@
 
             const data = await res.json();
 
+            // Single chunk — synchronous result
             if (data.audio) {
-                // Synchronous result
                 onAudioReady(data.audio.url);
                 return;
             }
 
+            // Single chunk — queued
             if (data.request_id) {
-                // Queue-based, poll for result
                 await pollForResult(data.request_id);
+                return;
+            }
+
+            // Multiple chunks
+            if (data.chunked) {
+                await handleChunkedGeneration(data);
                 return;
             }
 
@@ -240,6 +259,70 @@
         }
 
         throw new Error('Audio generation timed out. Please try again.');
+    }
+
+    // ── Chunked Generation ─────────────────────────────
+    async function handleChunkedGeneration(data) {
+        const { request_ids, audio_urls, total_chunks } = data;
+        const finalUrls = [...audio_urls];
+
+        const done = finalUrls.filter(Boolean).length;
+        generatingStatusText.textContent = `Generating audio (${done}/${total_chunks})`;
+        generatingSub.textContent = 'Processing multiple chunks...';
+
+        // Poll all unresolved chunks in parallel
+        const promises = request_ids.map(async (reqId, i) => {
+            if (finalUrls[i]) return; // already resolved synchronously
+            if (!reqId) throw new Error(`Missing request ID for chunk ${i + 1}`);
+
+            finalUrls[i] = await pollForChunkResult(reqId);
+
+            const completed = finalUrls.filter(Boolean).length;
+            generatingStatusText.textContent = `Generating audio (${completed}/${total_chunks})`;
+        });
+
+        await Promise.all(promises);
+
+        // Combine audio
+        generatingStatusText.textContent = 'Combining audio...';
+        generatingSub.textContent = 'Almost done!';
+
+        const blobs = [];
+        for (const url of finalUrls) {
+            const res = await fetch(url);
+            const blob = await res.blob();
+            blobs.push(blob);
+        }
+
+        const combined = new Blob(blobs, { type: 'audio/mpeg' });
+        const combinedUrl = URL.createObjectURL(combined);
+        onAudioReady(combinedUrl);
+    }
+
+    async function pollForChunkResult(requestId) {
+        const maxAttempts = 120;
+        for (let i = 0; i < maxAttempts; i++) {
+            await sleep(1500);
+
+            try {
+                const res = await fetch(`/api/speech-status?id=${requestId}`);
+                if (!res.ok) continue;
+
+                const data = await res.json();
+
+                if (data.status === 'COMPLETED' && data.result?.audio?.url) {
+                    return data.result.audio.url;
+                }
+
+                if (data.status === 'FAILED') {
+                    throw new Error('Audio generation failed for a chunk.');
+                }
+            } catch (err) {
+                if (err.message.includes('failed')) throw err;
+            }
+        }
+
+        throw new Error('Audio generation timed out.');
     }
 
     function sleep(ms) {
@@ -306,6 +389,9 @@
     function resetApp() {
         fileInput.value = '';
         textArea.value = '';
+        if (audioUrl && audioUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(audioUrl);
+        }
         audioPlayer.src = '';
         audioUrl = null;
         progressFill.style.width = '0%';
