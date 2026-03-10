@@ -27,6 +27,13 @@ export async function onRequestPost(context) {
 
         const chunks = splitText(text.trim());
 
+        // Add spoken part cues for multi-chunk audio
+        if (chunks.length > 1) {
+            for (let i = 0; i < chunks.length; i++) {
+                chunks[i] = `Part ${i + 1}. ${chunks[i]}`;
+            }
+        }
+
         // Submit all chunks to fal.ai queue
         const submissions = await Promise.all(chunks.map(async (chunk) => {
             const res = await fetch('https://queue.fal.run/fal-ai/minimax/speech-2.8-turbo', {

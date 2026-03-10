@@ -5,6 +5,8 @@
     let selectedVoice = 'Wise_Woman';
     let selectedEmotion = 'neutral';
     let audioUrl = null;
+    let audioParts = [];  // [{url, label}]
+    let currentPart = 0;
 
     // ── DOM ────────────────────────────────────────────
     const $ = (sel) => document.querySelector(sel);
@@ -40,6 +42,7 @@
     const retryBtn = $('#retry-btn');
     const generatingStatusText = $('#generating-status-text');
     const generatingSub = $('#generating-sub');
+    const partsNav = $('#parts-nav');
 
     // ── Section Management ─────────────────────────────
     function showSection(name) {
@@ -272,7 +275,7 @@
 
         // Poll all unresolved chunks in parallel
         const promises = request_ids.map(async (reqId, i) => {
-            if (finalUrls[i]) return; // already resolved synchronously
+            if (finalUrls[i]) return;
             if (!reqId) throw new Error(`Missing request ID for chunk ${i + 1}`);
 
             finalUrls[i] = await pollForChunkResult(reqId);
@@ -282,21 +285,7 @@
         });
 
         await Promise.all(promises);
-
-        // Combine audio
-        generatingStatusText.textContent = 'Combining audio...';
-        generatingSub.textContent = 'Almost done!';
-
-        const blobs = [];
-        for (const url of finalUrls) {
-            const res = await fetch(url);
-            const blob = await res.blob();
-            blobs.push(blob);
-        }
-
-        const combined = new Blob(blobs, { type: 'audio/mpeg' });
-        const combinedUrl = URL.createObjectURL(combined);
-        onAudioReady(combinedUrl);
+        onMultiAudioReady(finalUrls);
     }
 
     async function pollForChunkResult(requestId) {
@@ -331,12 +320,62 @@
 
     // ── Audio Playback ─────────────────────────────────
     function onAudioReady(url) {
+        audioParts = [];
+        currentPart = 0;
+        partsNav.classList.remove('visible');
+        partsNav.innerHTML = '';
+
         audioUrl = url;
         audioPlayer.src = url;
         downloadBtn.href = url;
+        downloadBtn.download = 'readmypdf-audio.mp3';
         progressFill.style.width = '0%';
         timeLabel.textContent = '0:00';
         showSection('audio');
+
+        audioPlayer.addEventListener('loadedmetadata', () => {
+            durationBadge.textContent = formatTime(audioPlayer.duration);
+        }, { once: true });
+    }
+
+    function onMultiAudioReady(urls) {
+        audioParts = urls.map((url, i) => ({
+            url,
+            label: `Pt. ${i + 1}`,
+        }));
+        currentPart = 0;
+
+        // Build part pills
+        partsNav.innerHTML = '';
+        audioParts.forEach((part, i) => {
+            const btn = document.createElement('button');
+            btn.className = 'part-pill' + (i === 0 ? ' active' : '');
+            btn.textContent = part.label;
+            btn.addEventListener('click', () => loadPart(i));
+            partsNav.appendChild(btn);
+        });
+        partsNav.classList.add('visible');
+
+        loadPart(0);
+        showSection('audio');
+    }
+
+    function loadPart(index) {
+        currentPart = index;
+        audioUrl = audioParts[index].url;
+        audioPlayer.src = audioUrl;
+        downloadBtn.href = audioUrl;
+        downloadBtn.download = `readmypdf-pt${index + 1}.mp3`;
+
+        // Update active pill
+        partsNav.querySelectorAll('.part-pill').forEach((p, i) => {
+            p.classList.toggle('active', i === index);
+        });
+
+        progressFill.style.width = '0%';
+        timeLabel.textContent = '0:00';
+        playIcon.style.display = 'block';
+        pauseIcon.style.display = 'none';
 
         audioPlayer.addEventListener('loadedmetadata', () => {
             durationBadge.textContent = formatTime(audioPlayer.duration);
@@ -364,9 +403,26 @@
     });
 
     audioPlayer.addEventListener('ended', () => {
+        // Auto-advance to next part
+        if (audioParts.length > 0 && currentPart < audioParts.length - 1) {
+            // Mark finished part as done
+            const pills = partsNav.querySelectorAll('.part-pill');
+            pills[currentPart].classList.add('done');
+
+            loadPart(currentPart + 1);
+            audioPlayer.play();
+            playIcon.style.display = 'none';
+            pauseIcon.style.display = 'block';
+            return;
+        }
+
+        // All done
         playIcon.style.display = 'block';
         pauseIcon.style.display = 'none';
         progressFill.style.width = '100%';
+        if (audioParts.length > 0) {
+            partsNav.querySelectorAll('.part-pill').forEach(p => p.classList.add('done'));
+        }
     });
 
     progressTrack.addEventListener('click', (e) => {
@@ -382,6 +438,13 @@
         return `${m}:${s.toString().padStart(2, '0')}`;
     }
 
+    // ── Download ─────────────────────────────────────────
+    downloadBtn.addEventListener('click', (e) => {
+        // For external URLs, let the browser handle it via href/download
+        // For blob URLs or fal.ai URLs, we need to fetch and save
+        if (!audioUrl) return;
+    });
+
     // ── Reset ──────────────────────────────────────────
     newBtn.addEventListener('click', resetApp);
     retryBtn.addEventListener('click', resetApp);
@@ -389,11 +452,12 @@
     function resetApp() {
         fileInput.value = '';
         textArea.value = '';
-        if (audioUrl && audioUrl.startsWith('blob:')) {
-            URL.revokeObjectURL(audioUrl);
-        }
         audioPlayer.src = '';
         audioUrl = null;
+        audioParts = [];
+        currentPart = 0;
+        partsNav.classList.remove('visible');
+        partsNav.innerHTML = '';
         progressFill.style.width = '0%';
         playIcon.style.display = 'block';
         pauseIcon.style.display = 'none';

@@ -592,6 +592,54 @@ html, body {
     margin-top: 16px;
 }
 
+/* ── Parts Nav ────────────────────────────────────────── */
+
+.parts-nav {
+    display: none;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.parts-nav.visible {
+    display: flex;
+}
+
+.part-pill {
+    padding: 6px 14px;
+    border-radius: var(--radius-pill);
+    border: 1px solid #2A2A2A;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.part-pill:hover {
+    border-color: #444;
+    color: var(--text);
+    background: #1A1A1A;
+}
+
+.part-pill.active {
+    border-color: var(--accent-blue);
+    background: rgba(74, 158, 255, 0.12);
+    color: var(--accent-blue);
+}
+
+.part-pill.done {
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+}
+
+.part-pill.done.active {
+    background: rgba(52, 211, 153, 0.12);
+    border-color: var(--accent-green);
+}
+
 /* ── Audio Player ─────────────────────────────────────── */
 
 .audio-card {
