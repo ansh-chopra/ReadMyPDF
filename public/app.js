@@ -5,8 +5,14 @@
     let selectedVoice = 'Wise_Woman';
     let selectedEmotion = 'neutral';
     let audioUrl = null;
-    let audioParts = [];  // [{url, label}]
+    let audioParts = [];
     let currentPart = 0;
+    let pdfFileName = '';
+    let savedId = null;
+    let allAudioUrls = [];
+    let currentPlaybackRate = 1;
+
+    const RING_CIRCUMFERENCE = 553;
 
     // ── DOM ────────────────────────────────────────────
     const $ = (sel) => document.querySelector(sel);
@@ -38,11 +44,18 @@
     const timeLabel = $('#time-label');
     const durationBadge = $('#duration-badge');
     const downloadBtn = $('#download-btn');
+    const shareBtn = $('#share-btn');
     const newBtn = $('#new-btn');
     const retryBtn = $('#retry-btn');
     const generatingStatusText = $('#generating-status-text');
     const generatingSub = $('#generating-sub');
     const partsNav = $('#parts-nav');
+    const shareUrlDisplay = $('#share-url-display');
+    const shareUrlInput = $('#share-url-input');
+    const copyLinkBtn = $('#copy-link-btn');
+    const ringFill = $('#ring-fill');
+    const audioTitle = $('#audio-title');
+    const audioVoiceLabel = $('#audio-voice-label');
 
     // ── Section Management ─────────────────────────────
     function showSection(name) {
@@ -54,6 +67,12 @@
         $('#error-title').textContent = title;
         $('#error-message').textContent = message;
         showSection('error');
+    }
+
+    // ── Play State Helper ──────────────────────────────
+    function updatePlayState(playing) {
+        playIcon.style.display = playing ? 'none' : 'block';
+        pauseIcon.style.display = playing ? 'block' : 'none';
     }
 
     // ── File Upload ────────────────────────────────────
@@ -91,6 +110,7 @@
             return;
         }
 
+        pdfFileName = file.name.replace(/\.pdf$/i, '');
         fileNameDisplay.textContent = file.name;
         showSection('processing');
         extractText(file);
@@ -213,19 +233,17 @@
 
             const data = await res.json();
 
-            // Single chunk — synchronous result
             if (data.audio) {
+                allAudioUrls = [data.audio.url];
                 onAudioReady(data.audio.url);
                 return;
             }
 
-            // Single chunk — queued
             if (data.request_id) {
                 await pollForResult(data.request_id);
                 return;
             }
 
-            // Multiple chunks
             if (data.chunked) {
                 await handleChunkedGeneration(data);
                 return;
@@ -249,6 +267,7 @@
                 const data = await res.json();
 
                 if (data.status === 'COMPLETED' && data.result?.audio?.url) {
+                    allAudioUrls = [data.result.audio.url];
                     onAudioReady(data.result.audio.url);
                     return;
                 }
@@ -273,7 +292,6 @@
         generatingStatusText.textContent = `Generating audio (${done}/${total_chunks})`;
         generatingSub.textContent = 'Processing multiple chunks...';
 
-        // Poll all unresolved chunks in parallel
         const promises = request_ids.map(async (reqId, i) => {
             if (finalUrls[i]) return;
             if (!reqId) throw new Error(`Missing request ID for chunk ${i + 1}`);
@@ -285,6 +303,7 @@
         });
 
         await Promise.all(promises);
+        allAudioUrls = [...finalUrls];
         onMultiAudioReady(finalUrls);
     }
 
@@ -318,34 +337,101 @@
         return new Promise(r => setTimeout(r, ms));
     }
 
+    // ── Media Session API ──────────────────────────────
+    function setupMediaSession() {
+        if (!('mediaSession' in navigator)) return;
+
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: pdfFileName || 'ReadMyPDF Audio',
+            artist: 'ReadMyPDF',
+            album: selectedVoice.replace(/_/g, ' '),
+        });
+
+        navigator.mediaSession.setActionHandler('play', () => {
+            audioPlayer.play();
+            updatePlayState(true);
+        });
+
+        navigator.mediaSession.setActionHandler('pause', () => {
+            audioPlayer.pause();
+            updatePlayState(false);
+        });
+
+        navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+            audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - (details.seekOffset || 10));
+        });
+
+        navigator.mediaSession.setActionHandler('seekforward', (details) => {
+            audioPlayer.currentTime = Math.min(audioPlayer.duration || 0, audioPlayer.currentTime + (details.seekOffset || 10));
+        });
+
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+            if (details.seekTime != null) {
+                audioPlayer.currentTime = details.seekTime;
+            }
+        });
+    }
+
+    function updateMediaSessionPosition() {
+        if (!('mediaSession' in navigator) || !audioPlayer.duration) return;
+        navigator.mediaSession.setPositionState({
+            duration: audioPlayer.duration,
+            playbackRate: audioPlayer.playbackRate,
+            position: audioPlayer.currentTime,
+        });
+    }
+
+    // ── Ring Progress ──────────────────────────────────
+    function updateRingProgress(pct) {
+        const offset = RING_CIRCUMFERENCE - (pct / 100) * RING_CIRCUMFERENCE;
+        ringFill.style.strokeDashoffset = offset;
+    }
+
     // ── Audio Playback ─────────────────────────────────
     function onAudioReady(url) {
         audioParts = [];
         currentPart = 0;
+        savedId = null;
         partsNav.classList.remove('visible');
         partsNav.innerHTML = '';
+        shareUrlDisplay.style.display = 'none';
+        shareBtn.textContent = 'Share';
+        shareBtn.disabled = false;
 
         audioUrl = url;
         audioPlayer.src = url;
+        audioPlayer.playbackRate = currentPlaybackRate;
         downloadBtn.href = url;
         downloadBtn.download = 'readmypdf-audio.mp3';
         progressFill.style.width = '0%';
         timeLabel.textContent = '0:00';
+        updateRingProgress(0);
+
+        // Set player title and voice label
+        audioTitle.textContent = pdfFileName || 'Untitled';
+        audioVoiceLabel.textContent = selectedVoice.replace(/_/g, ' ');
+
         showSection('audio');
+        setupMediaSession();
 
         audioPlayer.addEventListener('loadedmetadata', () => {
             durationBadge.textContent = formatTime(audioPlayer.duration);
+            updateMediaSessionPosition();
         }, { once: true });
     }
 
     function onMultiAudioReady(urls) {
+        savedId = null;
+        shareUrlDisplay.style.display = 'none';
+        shareBtn.textContent = 'Share';
+        shareBtn.disabled = false;
+
         audioParts = urls.map((url, i) => ({
             url,
             label: `Pt. ${i + 1}`,
         }));
         currentPart = 0;
 
-        // Build part pills
         partsNav.innerHTML = '';
         audioParts.forEach((part, i) => {
             const btn = document.createElement('button');
@@ -356,41 +442,45 @@
         });
         partsNav.classList.add('visible');
 
+        // Set player title and voice label
+        audioTitle.textContent = pdfFileName || 'Untitled';
+        audioVoiceLabel.textContent = selectedVoice.replace(/_/g, ' ');
+
         loadPart(0);
         showSection('audio');
+        setupMediaSession();
     }
 
     function loadPart(index) {
         currentPart = index;
         audioUrl = audioParts[index].url;
         audioPlayer.src = audioUrl;
+        audioPlayer.playbackRate = currentPlaybackRate;
         downloadBtn.href = audioUrl;
         downloadBtn.download = `readmypdf-pt${index + 1}.mp3`;
 
-        // Update active pill
         partsNav.querySelectorAll('.part-pill').forEach((p, i) => {
             p.classList.toggle('active', i === index);
         });
 
         progressFill.style.width = '0%';
         timeLabel.textContent = '0:00';
-        playIcon.style.display = 'block';
-        pauseIcon.style.display = 'none';
+        updateRingProgress(0);
+        updatePlayState(false);
 
         audioPlayer.addEventListener('loadedmetadata', () => {
             durationBadge.textContent = formatTime(audioPlayer.duration);
+            updateMediaSessionPosition();
         }, { once: true });
     }
 
     playBtn.addEventListener('click', () => {
         if (audioPlayer.paused) {
             audioPlayer.play();
-            playIcon.style.display = 'none';
-            pauseIcon.style.display = 'block';
+            updatePlayState(true);
         } else {
             audioPlayer.pause();
-            playIcon.style.display = 'block';
-            pauseIcon.style.display = 'none';
+            updatePlayState(false);
         }
     });
 
@@ -399,27 +489,33 @@
             const pct = (audioPlayer.currentTime / audioPlayer.duration) * 100;
             progressFill.style.width = `${pct}%`;
             timeLabel.textContent = formatTime(audioPlayer.currentTime);
+            updateRingProgress(pct);
+        }
+    });
+
+    // Update media session position periodically
+    let positionUpdateCounter = 0;
+    audioPlayer.addEventListener('timeupdate', () => {
+        positionUpdateCounter++;
+        if (positionUpdateCounter % 4 === 0) {
+            updateMediaSessionPosition();
         }
     });
 
     audioPlayer.addEventListener('ended', () => {
-        // Auto-advance to next part
         if (audioParts.length > 0 && currentPart < audioParts.length - 1) {
-            // Mark finished part as done
             const pills = partsNav.querySelectorAll('.part-pill');
             pills[currentPart].classList.add('done');
 
             loadPart(currentPart + 1);
             audioPlayer.play();
-            playIcon.style.display = 'none';
-            pauseIcon.style.display = 'block';
+            updatePlayState(true);
             return;
         }
 
-        // All done
-        playIcon.style.display = 'block';
-        pauseIcon.style.display = 'none';
+        updatePlayState(false);
         progressFill.style.width = '100%';
+        updateRingProgress(100);
         if (audioParts.length > 0) {
             partsNav.querySelectorAll('.part-pill').forEach(p => p.classList.add('done'));
         }
@@ -438,10 +534,82 @@
         return `${m}:${s.toString().padStart(2, '0')}`;
     }
 
+    // ── Playback Speed Control ─────────────────────────
+    document.querySelectorAll('.speed-pill').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.speed-pill').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentPlaybackRate = parseFloat(btn.dataset.speed);
+            audioPlayer.playbackRate = currentPlaybackRate;
+            updateMediaSessionPosition();
+        });
+    });
+
+    // ── Share / Save ──────────────────────────────────
+    shareBtn.addEventListener('click', async () => {
+        if (savedId) return;
+        if (!allAudioUrls.length) return;
+
+        shareBtn.disabled = true;
+        shareBtn.textContent = 'Saving...';
+
+        try {
+            const res = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: pdfFileName || 'Untitled PDF',
+                    text: textArea.value,
+                    audioUrls: allAudioUrls,
+                    voice: selectedVoice,
+                    speed: parseFloat(speedSlider.value),
+                    pitch: parseInt(pitchSlider.value),
+                    emotion: selectedEmotion,
+                }),
+            });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || 'Save failed');
+            }
+
+            const data = await res.json();
+            savedId = data.id;
+
+            const permanentUrl = `/api/audio/${data.id}`;
+            audioPlayer.src = permanentUrl;
+            audioPlayer.playbackRate = currentPlaybackRate;
+            audioUrl = permanentUrl;
+            downloadBtn.href = permanentUrl;
+            downloadBtn.download = `${pdfFileName || 'readmypdf-audio'}.mp3`;
+
+            if (audioParts.length > 0) {
+                audioParts = [];
+                currentPart = 0;
+                partsNav.classList.remove('visible');
+                partsNav.innerHTML = '';
+            }
+
+            shareUrlInput.value = data.url;
+            shareUrlDisplay.style.display = 'flex';
+            shareBtn.textContent = 'Saved!';
+        } catch (err) {
+            shareBtn.disabled = false;
+            shareBtn.textContent = 'Share';
+            showError('Save failed', err.message);
+        }
+    });
+
+    copyLinkBtn.addEventListener('click', () => {
+        shareUrlInput.select();
+        navigator.clipboard.writeText(shareUrlInput.value).then(() => {
+            copyLinkBtn.textContent = 'Copied!';
+            setTimeout(() => { copyLinkBtn.textContent = 'Copy'; }, 2000);
+        });
+    });
+
     // ── Download ─────────────────────────────────────────
     downloadBtn.addEventListener('click', (e) => {
-        // For external URLs, let the browser handle it via href/download
-        // For blob URLs or fal.ai URLs, we need to fetch and save
         if (!audioUrl) return;
     });
 
@@ -455,12 +623,21 @@
         audioPlayer.src = '';
         audioUrl = null;
         audioParts = [];
+        allAudioUrls = [];
         currentPart = 0;
+        pdfFileName = '';
+        savedId = null;
         partsNav.classList.remove('visible');
         partsNav.innerHTML = '';
         progressFill.style.width = '0%';
-        playIcon.style.display = 'block';
-        pauseIcon.style.display = 'none';
+        updatePlayState(false);
+        updateRingProgress(0);
+        shareUrlDisplay.style.display = 'none';
+        shareBtn.textContent = 'Share';
+        shareBtn.disabled = false;
+        document.querySelectorAll('.speed-pill').forEach(b => b.classList.remove('active'));
+        document.querySelector('.speed-pill[data-speed="1"]').classList.add('active');
+        currentPlaybackRate = 1;
         showSection('upload');
     }
 })();
